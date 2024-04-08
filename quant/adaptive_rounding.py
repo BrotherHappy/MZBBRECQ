@@ -22,7 +22,9 @@ class AdaRoundQuantizer(nn.Module):
         self.sym = uaq.sym
         self.delta = uaq.delta
         self.zero_point = uaq.zero_point
-        self.n_levels = uaq.n_levels
+        # self.n_levels = uaq.n_levels
+        self.qmin = uaq.qmin
+        self.qmax = uaq.qmax
 
         self.round_mode = round_mode
         self.alpha = None
@@ -52,10 +54,15 @@ class AdaRoundQuantizer(nn.Module):
         else:
             raise ValueError('Wrong rounding mode')
 
-        x_quant = torch.clamp(x_int + self.zero_point, 0, self.n_levels - 1)
+        x_quant = torch.clamp(x_int + self.zero_point, self.qmin, self.qmax)
         x_float_q = (x_quant - self.zero_point) * self.delta
 
         return x_float_q
+    
+    def int_repr(self,x):
+        x = torch.floor(x/self.delta) + self.get_soft_targets() + self.zero_point
+        return x
+
 
     def get_soft_targets(self):
         return torch.clamp(torch.sigmoid(self.alpha) * (self.zeta - self.gamma) + self.gamma, 0, 1)

@@ -1,17 +1,23 @@
 import torch
 import linklink as link
 from quant.quant_layer import QuantModule, StraightThrough, lp_loss
-from quant.quant_model import QuantModel
+from quant.quant_model import QuantModel,QuantModule
 from quant.block_recon import LinearTempDecay
 from quant.adaptive_rounding import AdaRoundQuantizer
 from quant.data_utils import save_grad_data, save_inp_oup_data
+from .hamming import HammingLoss
 
+hamming = HammingLoss()
+
+def compute_layer_loss(layer):
+    if isinstance(layer,QuantModule):
+        return hamming(layer.weight_quantizer.int_repr(layer.weight),reduce="mean")
 
 def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch.Tensor,
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.001, opt_mode: str = 'mse',
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
-                         multi_gpu: bool = False):
+                         multi_gpu: bool = False,no_r=False):
     """
     Block reconstruction to optimize the output from each layer.
 
@@ -70,6 +76,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     else:
         cached_grads = None
     device = 'cuda'
+    print(f"before layer reconstruction: {compute_layer_loss(layer)}")
     for i in range(iters):
         idx = torch.randperm(cached_inps.size(0))[:batch_size]
         cur_inp = cached_inps[idx]
@@ -79,7 +86,10 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         optimizer.zero_grad()
         out_quant = layer(cur_inp)
 
-        err = loss_func(out_quant, cur_out, cur_grad)
+        hamming_loss = compute_layer_loss(layer)
+        err = loss_func(out_quant, cur_out, cur_grad,hamming_loss=hamming_loss)
+        if not no_r:
+            err += hamming_loss
         err.backward(retain_graph=True)
         if multi_gpu:
             for p in opt_params:
@@ -87,6 +97,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         optimizer.step()
         if scheduler:
             scheduler.step()
+    print(f"after layer reconstruction: {compute_layer_loss(layer)}")
 
     torch.cuda.empty_cache()
 
@@ -121,7 +132,7 @@ class LossFunction:
                                           start_b=b_range[0], end_b=b_range[1])
         self.count = 0
 
-    def __call__(self, pred, tgt, grad=None):
+    def __call__(self, pred, tgt, grad=None,hamming_loss=0):
         """
         Compute the total loss for adaptive rounding:
         rec_loss is the quadratic output reconstruction loss, round_loss is
@@ -157,7 +168,7 @@ class LossFunction:
 
         total_loss = rec_loss + round_loss
         if self.count % 500 == 0:
-            print('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}'.format(
-                  float(total_loss), float(rec_loss), float(round_loss), b, self.count))
+            print('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f}, ham:{:.3f})\tb={:.2f}\tcount={}'.format(
+                  float(total_loss), float(rec_loss), float(round_loss),float(hamming_loss), b, self.count))
         return total_loss
 

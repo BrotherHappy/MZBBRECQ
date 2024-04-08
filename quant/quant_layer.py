@@ -56,6 +56,11 @@ class UniformAffineQuantizer(nn.Module):
         self.channel_wise = channel_wise
         self.scale_method = scale_method
 
+        if self.sym: # 对称和非对称区别
+            self.qmin,self.qmax = -2**(n_bits-1), 2**(n_bits-1) - 1
+        else:
+            self.qmin,self.qmax = 0, 2**(n_bits-1) - 1
+
     def forward(self, x: torch.Tensor):
 
         if self.inited is False:
@@ -69,9 +74,25 @@ class UniformAffineQuantizer(nn.Module):
 
         # start quantization
         x_int = round_ste(x / self.delta) + self.zero_point
-        x_quant = torch.clamp(x_int, 0, self.n_levels - 1)
+        x_quant = torch.clamp(x_int, self.qmin, self.qmax)
         x_dequant = (x_quant - self.zero_point) * self.delta
         return x_dequant
+
+    def forward_int(self,x:torch.Tensor):
+        if self.inited is False:
+            if self.leaf_param:
+                delta, self.zero_point = self.init_quantization_scale(x, self.channel_wise)
+                self.delta = torch.nn.Parameter(delta)
+                # self.zero_point = torch.nn.Parameter(self.zero_point)
+            else:
+                self.delta, self.zero_point = self.init_quantization_scale(x, self.channel_wise)
+            self.inited = True
+
+        # start quantization
+        return x/self.delta + self.zero_point
+        x_int = round_ste(x / self.delta) + self.zero_point
+        x_quant = torch.clamp(x_int, 0, self.n_levels - 1)
+        return x_quant
 
     def init_quantization_scale(self, x: torch.Tensor, channel_wise: bool = False):
         delta, zero_point = None, None
@@ -97,12 +118,20 @@ class UniformAffineQuantizer(nn.Module):
             if 'max' in self.scale_method:
                 x_min = min(x.min().item(), 0)
                 x_max = max(x.max().item(), 0)
+
+                if self.sym:
+                    delta1 = x_min / self.qmin
+                    delta2 = x_max / self.qmax
+                    delta = torch.tensor(max(delta1,delta2))
+                    zero_point = torch.zeros_like(delta)
+                    return delta, zero_point
+
                 if 'scale' in self.scale_method:
                     x_min = x_min * (self.n_bits + 2) / 8
                     x_max = x_max * (self.n_bits + 2) / 8
 
                 x_absmax = max(abs(x_min), x_max)
-                if self.sym:
+                if self.sym: # 如果对称,
                     x_min, x_max = -x_absmax if x_min < 0 else 0, x_absmax
 
                 delta = float(x_max - x_min) / (self.n_levels - 1)
@@ -126,14 +155,30 @@ class UniformAffineQuantizer(nn.Module):
                     score = lp_loss(x, x_q, p=2.4, reduction='all')
                     if score < best_score:
                         best_score = score
-                        delta = (new_max - new_min) / (2 ** self.n_bits - 1)
-                        zero_point = (- new_min / delta).round()
+                        if self.sym:
+                            delta1 = (new_min / self.qmin).abs()
+                            delta2 = (new_max / self.qmax).abs()
+                            delta = torch.max(delta1,delta2)
+                            zero_point = torch.zeros_like(delta)
+                        else:
+                            delta = (new_max - new_min) / (2 ** self.n_bits - 1)
+                            zero_point = (- new_min / delta).round()
             else:
                 raise NotImplementedError
 
         return delta, zero_point
 
     def quantize(self, x, max, min):
+        if self.sym:
+            delta1 = (min / self.qmin).abs()
+            delta2 = (max/ self.qmax).abs()
+            delta = torch.max(delta1,delta2)
+            zero_point = torch.zeros_like(delta)
+            x_int = torch.round(x/delta)
+            x_quant = torch.clmap(x_int + zero_point,self.qmin,self.qmax)
+            x_float_q = (x_quant - zero_point) * delta
+            return x_float_q
+
         delta = (max - min) / (2 ** self.n_bits - 1)
         zero_point = (- min / delta).round()
         # we assume weight quantization is always signed

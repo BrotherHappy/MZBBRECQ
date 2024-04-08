@@ -8,6 +8,8 @@ import time
 import hubconf
 from quant import *
 from data.imagenet import build_imagenet_data
+from quant.block_recon import compute_hamming_loss
+from loguru import logger
 
 
 def seed_all(seed=1029):
@@ -141,7 +143,7 @@ if __name__ == '__main__':
                         choices=['resnet18', 'resnet50', 'mobilenetv2', 'regnetx_600m', 'regnetx_3200m', 'mnasnet'])
     parser.add_argument('--batch_size', default=64, type=int, help='mini-batch size for data loader')
     parser.add_argument('--workers', default=4, type=int, help='number of workers for data loader')
-    parser.add_argument('--data_path', default='', type=str, help='path to ImageNet data', required=True)
+    parser.add_argument('--data_path', default='/data01/datasets/imagenet', type=str, help='path to ImageNet data',)
 
     # quantization parameters
     parser.add_argument('--n_bits_w', default=4, type=int, help='bitwidth for weight quantization')
@@ -165,6 +167,7 @@ if __name__ == '__main__':
     parser.add_argument('--iters_a', default=5000, type=int, help='number of iteration for LSQ')
     parser.add_argument('--lr', default=4e-4, type=float, help='learning rate for LSQ')
     parser.add_argument('--p', default=2.4, type=float, help='L_p norm minimization for LSQ')
+    parser.add_argument("--no_r",action="store_true")
 
     args = parser.parse_args()
 
@@ -178,9 +181,11 @@ if __name__ == '__main__':
     cnn.cuda()
     cnn.eval()
     # build quantization parameters
-    wq_params = {'n_bits': args.n_bits_w, 'channel_wise': args.channel_wise, 'scale_method': 'mse'}
+    wq_params = {'n_bits': args.n_bits_w, 'channel_wise': args.channel_wise, 'scale_method': 'max',"symmetric":True}
     aq_params = {'n_bits': args.n_bits_a, 'channel_wise': False, 'scale_method': 'mse', 'leaf_param': args.act_quant}
     qnn = QuantModel(model=cnn, weight_quant_params=wq_params, act_quant_params=aq_params)
+    work_dir = f"{args.arch}-W{args.n_bits_w}-A{args.n_bits_a}-brecq{not args.no_r}-{time.strftime('%Y%m%d%H%M', time.localtime())}"
+    logger.add(work_dir+"/log.txt")
     qnn.cuda()
     qnn.eval()
     if not args.disable_8bit_head_stem:
@@ -208,25 +213,31 @@ if __name__ == '__main__':
         for name, module in model.named_children():
             if isinstance(module, QuantModule):
                 if module.ignore_reconstruction is True:
-                    print('Ignore reconstruction of layer {}'.format(name))
+                    logger.info('Ignore reconstruction of layer {}'.format(name))
                     continue
                 else:
-                    print('Reconstruction for layer {}'.format(name))
-                    layer_reconstruction(qnn, module, **kwargs)
+                    logger.info('Reconstruction for layer {}'.format(name))
+                    layer_reconstruction(qnn, module,no_r=args.no_r, **kwargs)
             elif isinstance(module, BaseQuantBlock):
                 if module.ignore_reconstruction is True:
-                    print('Ignore reconstruction of block {}'.format(name))
+                    logger.info('Ignore reconstruction of block {}'.format(name))
                     continue
                 else:
-                    print('Reconstruction for block {}'.format(name))
-                    block_reconstruction(qnn, module, **kwargs)
+                    logger.info('Reconstruction for block {}'.format(name))
+                    block_reconstruction(qnn, module,no_r=args.no_r, **kwargs)
             else:
                 recon_model(module)
 
     # Start calibration
+    logger.info(f"*"*100)
+    logger.info(f"Before Quant: {compute_hamming_loss(qnn)}")
     recon_model(qnn)
+    logger.info(f"*"*100)
+    logger.info(f"After Quant: {compute_hamming_loss(qnn)}")
     qnn.set_quant_state(weight_quant=True, act_quant=False)
-    print('Weight quantization accuracy: {}'.format(validate_model(test_loader, qnn)))
+    logger.info('Weight quantization accuracy: {}'.format(validate_model(test_loader, qnn)))
+    torch.save(qnn,work_dir + "/qnn.pt")
+    breakpoint()
 
     if args.act_quant:
         # Initialize activation quantization parameters
@@ -242,3 +253,4 @@ if __name__ == '__main__':
         qnn.set_quant_state(weight_quant=True, act_quant=True)
         print('Full quantization (W{}A{}) accuracy: {}'.format(args.n_bits_w, args.n_bits_a,
                                                                validate_model(test_loader, qnn)))
+    breakpoint()

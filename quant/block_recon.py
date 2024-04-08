@@ -3,15 +3,34 @@ import linklink as link
 from quant.quant_layer import QuantModule, StraightThrough, lp_loss
 from quant.quant_model import QuantModel
 from quant.quant_block import BaseQuantBlock
-from quant.adaptive_rounding import AdaRoundQuantizer
+from quant.adaptive_rounding import AdaRoundQuantizer,UniformAffineQuantizer
 from quant.data_utils import save_grad_data, save_inp_oup_data
+from .hamming import HammingLoss
+
+hamming = HammingLoss()
+def compute_hamming_loss(block):
+    hamming_loss = 0
+    total_numel = 0
+    for n,m in block.named_modules():
+        if isinstance(m, QuantModule):
+            if isinstance(m.weight_quantizer,AdaRoundQuantizer):
+                hamming_loss += hamming(m.weight_quantizer.int_repr(m.weight),reduce="sum")
+                total_numel += m.weight.numel()
+            elif isinstance(m.weight_quantizer,UniformAffineQuantizer):
+                hamming_loss += hamming(m.weight_quantizer.forward_int(m.weight),reduce="sum")
+                total_numel += m.weight.numel()
+            else:
+                pass
+    if total_numel == 0:
+        return 0
+    return hamming_loss / total_numel
 
 
 def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: torch.Tensor,
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.01, opt_mode: str = 'mse',
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
-                         multi_gpu: bool = False):
+                         multi_gpu: bool = False,no_r=False):
     """
     Block reconstruction to optimize the output from each block.
 
@@ -38,6 +57,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     if not include_act_func:
         org_act_func = block.activation_function
         block.activation_function = StraightThrough()
+    
 
     if not act_quant:
         # Replace weight quantizer to AdaRoundQuantizer
@@ -80,6 +100,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     else:
         cached_grads = None
     device = 'cuda'
+    before_hamming_loss = compute_hamming_loss(block)
+    print(f"before_hamming_loss:{before_hamming_loss.item()}")
     for i in range(iters):
         idx = torch.randperm(cached_inps.size(0))[:batch_size]
         cur_inp = cached_inps[idx].to(device)
@@ -89,7 +111,10 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         optimizer.zero_grad()
         out_quant = block(cur_inp)
 
-        err = loss_func(out_quant, cur_out, cur_grad)
+        hamming_loss = compute_hamming_loss(block)
+        err = loss_func(out_quant, cur_out, cur_grad,hamming_loss=hamming_loss)
+        if not no_r:
+            err += hamming_loss
         err.backward(retain_graph=True)
         if multi_gpu:
             for p in opt_params:
@@ -99,6 +124,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
             scheduler.step()
 
     torch.cuda.empty_cache()
+    print(f"after_hamming_loss:{compute_hamming_loss(block).item()}")
 
     # Finish optimization, use hard rounding.
     for name, module in block.named_modules():
@@ -133,7 +159,7 @@ class LossFunction:
                                           start_b=b_range[0], end_b=b_range[1])
         self.count = 0
 
-    def __call__(self, pred, tgt, grad=None):
+    def __call__(self, pred, tgt, grad=None,hamming_loss=""):
         """
         Compute the total loss for adaptive rounding:
         rec_loss is the quadratic output reconstruction loss, round_loss is
@@ -171,8 +197,8 @@ class LossFunction:
 
         total_loss = rec_loss + round_loss
         if self.count % 500 == 0:
-            print('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}'.format(
-                  float(total_loss), float(rec_loss), float(round_loss), b, self.count))
+            print('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f}),ham:{:.3f}\tb={:.2f}\tcount={}'.format(
+                  float(total_loss), float(rec_loss), float(round_loss),float(hamming_loss), b, self.count))
         return total_loss
 
 
