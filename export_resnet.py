@@ -24,7 +24,7 @@ def exam_quantized(model:torch.nn.Module,img=torch.randn(1,3,224,224)):
             d = dict()
             d['w_scale'] = m.weight_quantizer.delta
             d['weight'] = m.weight
-            d['qweight'] = m.weight_fake_quant.int_repr(m.weight).round()
+            d['qweight'] = m.weight_quantizer.int_repr(m.weight).round().clip(-128,127)
             ret_dict[name] = d
         return hook
     hooks = list()
