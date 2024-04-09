@@ -1,0 +1,23 @@
+2024-04-09 01:32:21.755 | INFO     | __main__:<module>:232 - ****************************************************************************************************
+2024-04-09 01:32:21.775 | INFO     | __main__:<module>:233 - Before Quant: 4.042412281036377
+2024-04-09 01:32:21.775 | INFO     | __main__:recon_model:216 - Ignore reconstruction of layer conv1
+2024-04-09 01:32:21.775 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:36:11.452 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 01:39:34.814 | INFO     | __main__:recon_model:226 - Reconstruction for block 2
+2024-04-09 01:42:55.541 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:46:24.093 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 01:49:06.141 | INFO     | __main__:recon_model:226 - Reconstruction for block 2
+2024-04-09 01:51:41.788 | INFO     | __main__:recon_model:226 - Reconstruction for block 3
+2024-04-09 01:54:23.530 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:57:38.019 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 02:00:16.251 | INFO     | __main__:recon_model:226 - Reconstruction for block 2
+2024-04-09 02:02:53.916 | INFO     | __main__:recon_model:226 - Reconstruction for block 3
+2024-04-09 02:05:31.706 | INFO     | __main__:recon_model:226 - Reconstruction for block 4
+2024-04-09 02:08:10.487 | INFO     | __main__:recon_model:226 - Reconstruction for block 5
+2024-04-09 02:10:39.116 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 02:14:12.428 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 02:16:55.308 | INFO     | __main__:recon_model:226 - Reconstruction for block 2
+2024-04-09 02:19:39.773 | INFO     | __main__:recon_model:219 - Reconstruction for layer fc
+2024-04-09 02:20:39.157 | INFO     | __main__:<module>:235 - ****************************************************************************************************
+2024-04-09 02:20:39.189 | INFO     | __main__:<module>:236 - After Quant: 4.042393684387207
+2024-04-09 02:21:50.337 | INFO     | __main__:<module>:238 - Weight quantization accuracy: 76.59400177001953

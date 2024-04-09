@@ -1,0 +1,15 @@
+2024-04-09 01:29:42.043 | INFO     | __main__:<module>:232 - ****************************************************************************************************
+2024-04-09 01:29:42.057 | INFO     | __main__:<module>:233 - Before Quant: 4.079344272613525
+2024-04-09 01:29:42.057 | INFO     | __main__:recon_model:216 - Ignore reconstruction of layer conv1
+2024-04-09 01:29:42.057 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:31:59.517 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 01:34:29.585 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:37:43.636 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 01:40:33.484 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:43:11.192 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 01:44:52.204 | INFO     | __main__:recon_model:226 - Reconstruction for block 0
+2024-04-09 01:47:22.516 | INFO     | __main__:recon_model:226 - Reconstruction for block 1
+2024-04-09 01:49:30.541 | INFO     | __main__:recon_model:219 - Reconstruction for layer fc
+2024-04-09 01:50:23.784 | INFO     | __main__:<module>:235 - ****************************************************************************************************
+2024-04-09 01:50:23.796 | INFO     | __main__:<module>:236 - After Quant: 4.079626083374023
+2024-04-09 01:51:35.449 | INFO     | __main__:<module>:238 - Weight quantization accuracy: 70.94200134277344
